@@ -4,8 +4,9 @@ import readline from "readline";
 import { Agent } from "./agent";
 
 export function runRepl() {
-  console.log("Welcome to the Code Agent REPL!");
-  console.log("Type your question or command. Press Ctrl+C to exit.\n");
+  console.log("Welcome to the Code Agent REPL (GPT-4o).");
+  console.log("Type your question or command, then press Enter.");
+  console.log("Press Ctrl+C to exit.\n");
 
   const rl = readline.createInterface({
     input: process.stdin,

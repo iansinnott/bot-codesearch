@@ -26,20 +26,19 @@ export class Agent {
   constructor(options?: AgentOptions) {
     this.onToolUsed = options?.onToolUsed;
     // Provide a system prompt that helps the LLM figure out how to handle the conversation.
+    // We clarify that it has read-only tools and may use them freely, no user confirmation needed.
     this.conversation.push({
       role: "system",
-      content: `You are a code-searching AI agent. You can answer questions about the codebase.
-You have the following tools available:
-- find: for searching the filesystem for files matching certain criteria
-- cat: for printing out file contents
-- grep: for searching file contents by regex
+      content: `You are a code-searching AI agent. You have access to these tools:
+- find: for searching the filesystem
+- cat: for printing file contents
+- grep: for searching file contents
 
-When you wish to use a tool, output JSON in the format:
-  { "action": "tool", "tool": "<toolName>", "args": "<args>" }
+You can use these tools freely without asking for permission since they are read-only.
+Your job is to keep using these tools as needed until you have enough info to answer the user's query.
+Then provide a final answer as plain text.
 
-Then wait for the tool output to be fed back to you. Do not add anything else outside of this JSON if you want to call a tool.
-
-When you have sufficient information, provide your final answer by responding in plain text.`,
+Never ask for user confirmation to run a read-only tool.`,
     });
 
     // Initialize the available tools:
@@ -47,78 +46,70 @@ When you have sufficient information, provide your final answer by responding in
   }
 
   public async processInput(userQuery: string): Promise<string> {
-    // Add the user query to the conversation
+    // Add the user query
     this.conversation.push({ role: "user", content: userQuery });
 
-    // We will loop until the LLM gives us a final answer (no tool usage requested).
-    // The loop breaks when the LLM stops requesting tools.
+    // We'll attempt up to 20 tool calls in one user request before giving up.
     for (let i = 0; i < 20; i++) {
-      // Send entire conversation to OpenAI
+      // Call OpenAI with the entire conversation
       const assistantMessage = await openaiChat(this.conversation);
 
-      // Add the assistant message to the conversation
-      this.conversation.push({
-        role: "assistant",
-        content: assistantMessage,
-      });
-
-      // Try to parse out a tool usage instruction from the LLM’s response
+      // Check if the assistant is requesting a tool
       const toolInstruction = this.maybeParseToolInstruction(assistantMessage);
-
       if (toolInstruction) {
         const { toolName, args } = toolInstruction;
-        // Check if we have a known tool
         const tool = this.tools.find((t) => t.name === toolName);
         if (!tool) {
-          // If we can’t find the tool, we’ll respond back that the tool is unknown
-          const errorMessage = `Tool "${toolName}" is not recognized.`;
-          this.conversation.push({
-            role: "assistant",
-            content: errorMessage,
-          });
+          const errorMessage = `Tool "${toolName}" not recognized.`;
+          this.conversation.push({ role: "assistant", content: errorMessage });
           return errorMessage;
         }
 
         // Execute the tool
         const toolOutput = await tool.run(args);
 
-        // Log tool usage and create snippet of the output
+        // Log usage
         const snippet = toolOutput.substring(0, 400);
         const logPath = await tool.logFullOutput(toolName, args, toolOutput);
-
         if (this.onToolUsed) {
           this.onToolUsed(toolName, args, snippet, logPath);
         }
 
-        // Now feed the tool’s output back into the conversation
+        // Provide the tool output back to the agent
+        this.conversation.push({
+          role: "assistant",
+          content: assistantMessage,
+        });
         this.conversation.push({
           role: "assistant",
           content: `Tool Output:\n${toolOutput}`,
         });
-
-        // Then continue the loop, so the LLM can incorporate this new info
+        // Then continue the loop so the agent can incorporate the tool results
       } else {
-        // No tool usage indicated, so we assume the message is the final answer
-        // Return that to the user
+        // No tool usage => final answer, so we return it to the user
+        this.conversation.push({
+          role: "assistant",
+          content: assistantMessage,
+        });
         return assistantMessage;
       }
     }
 
-    // If we got here, it means we had too many iterations. Just bail out.
-    return "I'm sorry, I'm stuck in a loop. Please try again.";
+    // If we exceeded 20 tool calls, let's bail
+    return "I'm sorry, I've tried too many tool calls and seem to be stuck.";
   }
 
   private maybeParseToolInstruction(message: string): { toolName: string; args: string } | null {
-    // A simple approach to parse JSON that looks like: { "action": "tool", "tool": "cat", "args": "package.json" }
-    // This can be made more robust, but for demonstration:
-    const toolUsageRegex =
-      /\{\s*"action"\s*:\s*"tool"\s*,\s*"tool"\s*:\s*"([^"]+)"\s*,\s*"args"\s*:\s*"([^"]*)"\s*\}/;
-    const match = message.match(toolUsageRegex);
-    if (match) {
-      return {
-        toolName: match[1],
-        args: match[2],
-      };
+    try {
+      const parsed = JSON.parse(message);
+      if (parsed.action === "tool") {
+        return {
+          toolName: parsed.tool,
+          args: parsed.args,
+        };
+      }
+    } catch (e) {
+      // Not JSON, so not a tool call
     }
     return null;
   }

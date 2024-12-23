@@ -30,9 +30,7 @@ async function logOutputToFile(toolName: string, args: string, output: string): 
 export const findTool: Tool = {
   name: "find",
   async run(args: string) {
-    // macOS find can be slightly different from GNU find, but usually usage is similar
-    // For example, if the agent says: find . -name "*.js"
-    // We'll just pass the entire args string. The user/LLM needs to craft correct find syntax.
+    // macOS find might differ from GNU find, but usually usage is similar
     try {
       const { stdout, stderr } = await execAsync(`find ${args}`);
       if (stderr) return stderr;
@@ -49,8 +47,6 @@ export const findTool: Tool = {
 export const catTool: Tool = {
   name: "cat",
   async run(args: string) {
-    // We assume the LLM will pass a file path in "args"
-    // For safety, you may want to sanitize or validate the path
     try {
       const fileContent = fs.readFileSync(args, "utf8");
       return fileContent;
@@ -66,8 +62,6 @@ export const catTool: Tool = {
 export const grepTool: Tool = {
   name: "grep",
   async run(args: string) {
-    // The LLM might do something like: grep "import React" -r .
-    // On macOS, grep usage is typically the same as on Linux, but watch out for BSD vs GNU differences
     try {
       const { stdout, stderr } = await execAsync(`grep ${args}`);
       if (stderr) return stderr;
