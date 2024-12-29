@@ -1,5 +1,9 @@
 # bot-codesearch
 
+Search your codebase! A demo of building your own LLM agent.
+
+---
+
 To install dependencies:
 
 ```bash
@@ -11,5 +15,3 @@ To run:
 ```bash
 bun run index.ts
 ```
-
-This project was created using `bun init` in bun v1.1.41. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.
