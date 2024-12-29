@@ -1,6 +1,5 @@
-// File: src/openai.ts
-
 import { OpenAI } from "openai";
+import { allTools } from "./tools";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -13,59 +12,10 @@ export async function openaiChat(
     throw new Error("Missing OPENAI_API_KEY environment variable.");
   }
 
-  const tools = [
-    {
-      type: "function" as const,
-      function: {
-        name: "find",
-        description: "Search the filesystem",
-        parameters: {
-          type: "object",
-          properties: {
-            args: {
-              type: "string",
-              description: "Arguments to pass to the find command",
-            },
-          },
-          required: ["args"],
-        },
-      },
-    },
-    {
-      type: "function" as const,
-      function: {
-        name: "cat",
-        description: "Print file contents",
-        parameters: {
-          type: "object",
-          properties: {
-            args: {
-              type: "string",
-              description: "Path to the file to read",
-            },
-          },
-          required: ["args"],
-        },
-      },
-    },
-    {
-      type: "function" as const,
-      function: {
-        name: "grep",
-        description: "Search file contents",
-        parameters: {
-          type: "object",
-          properties: {
-            args: {
-              type: "string",
-              description: "Arguments to pass to the grep command",
-            },
-          },
-          required: ["args"],
-        },
-      },
-    },
-  ];
+  const tools = allTools.map((tool) => ({
+    type: "function" as const,
+    function: tool.openaiFunction,
+  }));
 
   const response = await openai.chat.completions.create({
     model: "gpt-4", // Note: gpt-4o is not a real model name

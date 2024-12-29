@@ -1,5 +1,3 @@
-// File: src/repl.ts
-
 import readline from "readline";
 import { Agent } from "./agent";
 
