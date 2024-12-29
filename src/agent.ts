@@ -1,5 +1,3 @@
-// File: src/agent.ts
-
 import { openaiChat } from "./openai";
 import type { Tool } from "./tools";
 import { findTool, catTool, grepTool } from "./tools";
@@ -25,8 +23,8 @@ export class Agent {
 
   constructor(options?: AgentOptions) {
     this.onToolUsed = options?.onToolUsed;
-    // Provide a system prompt that helps the LLM figure out how to handle the conversation.
-    // We clarify that it has read-only tools and may use them freely, no user confirmation needed.
+
+    // System prompt
     this.conversation.push({
       role: "system",
       content: `You are a code-searching AI agent. You have access to these tools:
@@ -56,43 +54,45 @@ Never ask for user confirmation to run a read-only tool.`,
 
       // Check if the assistant is requesting a tool
       const toolInstruction = this.maybeParseToolInstruction(assistantMessage);
-      if (toolInstruction) {
-        const { toolName, args } = toolInstruction;
-        const tool = this.tools.find((t) => t.name === toolName);
-        if (!tool) {
-          const errorMessage = `Tool "${toolName}" not recognized.`;
-          this.conversation.push({ role: "assistant", content: errorMessage });
-          return errorMessage;
-        }
 
-        // Execute the tool
-        const toolOutput = await tool.run(args);
-
-        // Log usage
-        const snippet = toolOutput.substring(0, 400);
-        const logPath = await tool.logFullOutput(toolName, args, toolOutput);
-        if (this.onToolUsed) {
-          this.onToolUsed(toolName, args, snippet, logPath);
-        }
-
-        // Provide the tool output back to the agent
-        this.conversation.push({
-          role: "assistant",
-          content: assistantMessage,
-        });
-        this.conversation.push({
-          role: "assistant",
-          content: `Tool Output:\n${toolOutput}`,
-        });
-        // Then continue the loop so the agent can incorporate the tool results
-      } else {
-        // No tool usage => final answer, so we return it to the user
+      // No tool usage => final answer, so we return it to the user
+      if (!toolInstruction) {
         this.conversation.push({
           role: "assistant",
           content: assistantMessage,
         });
         return assistantMessage;
       }
+
+      const { toolName, args } = toolInstruction;
+      const tool = this.tools.find((t) => t.name === toolName);
+      if (!tool) {
+        const errorMessage = `Tool "${toolName}" not recognized.`;
+        this.conversation.push({ role: "assistant", content: errorMessage });
+        return errorMessage;
+      }
+
+      // Execute the tool
+      const toolOutput = await tool.run(args);
+
+      // Log usage
+      const snippet = toolOutput.substring(0, 400);
+      const logPath = await tool.logFullOutput(toolName, args, toolOutput);
+      if (this.onToolUsed) {
+        this.onToolUsed(toolName, args, snippet, logPath);
+      }
+
+      // Provide the tool output back to the agent
+      this.conversation.push({
+        role: "assistant",
+        content: assistantMessage,
+      });
+      this.conversation.push({
+        role: "assistant",
+        content: `Tool Output:\n${toolOutput}`,
+      });
+
+      // Then continue the loop so the agent can incorporate the tool results
     }
 
     // If we exceeded 20 tool calls, let's bail
