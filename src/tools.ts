@@ -42,9 +42,11 @@ async function logOutputToFile(toolName: string, args: string, output: string): 
 export const findTool: Tool = {
   name: "find",
   async run(args: string) {
-    // macOS find might differ from GNU find, but usually usage is similar
     try {
-      // Add default exclusions for common directories to ignore
+      // Ensure we start from current directory by getting absolute path
+      const cwd = process.cwd();
+
+      // Common exclusions for directories to ignore
       const excludes = [
         "-not",
         "-path",
@@ -62,9 +64,14 @@ export const findTool: Tool = {
         "-path",
         "*/coverage/*",
       ].join(" ");
-      const { stdout, stderr } = await execAsync(`find ${args} ${excludes}`);
+
+      // On macOS, -P uses regex for -path, -E enables extended regex
+      // Starting with . ensures we don't search above current directory
+      const { stdout, stderr } = await execAsync(`cd "${cwd}" && find . ${args} ${excludes}`);
+
       if (stderr) return stderr;
-      return stdout;
+      // Clean up the output to remove the leading ./
+      return stdout.replace(/^\.\//gm, "");
     } catch (error: any) {
       return error.message;
     }
@@ -75,13 +82,13 @@ export const findTool: Tool = {
   openaiFunction: {
     name: "find",
     description:
-      "Search the filesystem (automatically excludes node_modules, .git, dist, build, and coverage directories)",
+      "Search the filesystem starting from the current directory downward (will not search parent directories). Optimized for macOS find command. Automatically excludes node_modules, .git, dist, build, and coverage directories.",
     parameters: {
       type: "object",
       properties: {
         args: {
           type: "string",
-          description: "Arguments to pass to the find command",
+          description: "Arguments to pass to the find command. The search will always start from the current directory.",
         },
       },
       required: ["args"],
